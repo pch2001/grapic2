@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - loaders - OBJ loader</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<!--link type="text/css" rel="stylesheet" href="main.css"-->
+	</head>
+
+	<body>
+		<div id="info">
+		<a href="https://threejs.org" target="_blank" rel="noopener">three.js</a> - OBJLoader test
+		</div>
+
+		<script type="x-shader/x-vertex" id="phongTexVS">
+            varying vec3 fNormal, fViewPos;
+			varying vec2 fTexCoord;
+
+            void main(){
+                gl_Position =projectionMatrix * modelViewMatrix * vec4(position,1.0);
+
+                fNormal = normalize(normalMatrix * normal);
+                fViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+				fTexCoord = uv;
+            }
+        </script>
+        <script type="x-shader/x-fragment" id="phongTexFS">
+            precision mediump float;
+
+            uniform vec3 lightDir;
+            uniform vec4 lightAmbient, lightDiffuse, lightSpecular;
+            uniform vec4 matAmbient, matDiffuse, matSpecular;
+            uniform float matShininess;
+
+            varying vec3 fNormal, fViewPos;
+			varying vec2 fTexCoord;
+			uniform sampler2D texImage;
+
+            void main(){
+                vec4 ambient = lightAmbient * matAmbient;
+
+                vec3 N = normalize(fNormal);
+                vec3 L = normalize(lightDir);
+                float kd = max(dot(L, N), 0.0);
+                vec4 diffuse = kd * lightDiffuse * matDiffuse;
+
+                vec3 V = normalize(fViewPos);
+                vec3 H = normalize(L-V);
+                float ks = pow(max(dot(N, H), 0.0), matShininess);
+                vec4 specular = ks * lightSpecular * matSpecular;
+
+                gl_FragColor = (ambient + diffuse + specular) * texture2D(texImage, fTexCoord);
+                gl_FragColor.a = 1.0;
+            }
+        </script>
+
+		<script type="importmap">
+			{
+				"imports":{
+                    "three": "https://unpkg.com/three/build/three.module.js",
+                    "three/addons/": "https://unpkg.com/three/examples/jsm/"
+                }
+			}
+		</script>
+
+		<script type="module">
+
+			import * as THREE from 'three';
+
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+			let camera, scene, renderer;
+
+			let object;
+
+			init();
+
+
+			function init() {
+
+				camera = new THREE.PerspectiveCamera( 45, window.innerWidth / window.innerHeight, 0.1, 20 );
+				camera.position.z = 2.5;
+
+				// scene
+
+				scene = new THREE.Scene();
+
+				//const ambientLight = new THREE.AmbientLight( 0xffffff );
+				//scene.add( ambientLight );
+
+				//const pointLight = new THREE.PointLight( 0xffffff, 15 );
+				//camera.add( pointLight );
+				scene.add( camera );
+
+				const texture = new THREE.TextureLoader().load('obj/male02/uv_grid_opengl.jpg');
+				const texmaterial = new THREE.ShaderMaterial({
+                        uniforms :{
+                            lightDir: {value : [0, 0, 1]},
+                            lightAmbient: {value: [0.0, 0.0, 0.0, 1.0]},
+                            lightDiffuse: {value: [1.0, 1.0, 1.0, 1.0]},
+                            lightSpecular: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matAmbient : {value: [1.0, 1.0, 1.0, 1.0]},
+                            matDiffuse: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matSpecular: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matShininess: {value: 100},
+							texImage : {value : texture},
+                        },
+                        vertexShader: document.getElementById("phongTexVS").textContent,
+                        fragmentShader: document.getElementById("phongTexFS").textContent
+                });
+
+				// manager
+
+				function loadModel() {
+
+					const group = new THREE.Group();
+
+					object.traverse( function ( child ) {
+
+						//if ( child.isMesh ) child.material.map = texture;
+
+						if(child.isMesh){
+							const geometry = new THREE.BufferGeometry();
+							geometry.setAttribute('position', new THREE.Float32BufferAttribute(child.geometry.getAttribute('position').array,3));
+                			geometry.setAttribute('normal', new THREE.Float32BufferAttribute(child.geometry.getAttribute('normal').array,3));
+							geometry.setAttribute('uv', new THREE.Float32BufferAttribute(child.geometry.getAttribute('uv').array,2));
+							const mesh = new THREE.Mesh(geometry, texmaterial);
+
+							group.add(mesh);
+						}
+
+					} );
+
+					group.position.y = - 0.95;
+					group.scale.setScalar( 0.01 );
+					scene.add( group );
+
+					//object.position.y = - 0.95;
+					//object.scale.setScalar( 0.01 );
+					//scene.add( object );
+
+					render();
+
+				}
+
+				const manager = new THREE.LoadingManager( loadModel );
+
+				// texture
+
+				//const textureLoader = new THREE.TextureLoader( manager );
+				//const texture = textureLoader.load( 'textures/uv_grid_opengl.jpg', render );
+				//texture.colorSpace = THREE.SRGBColorSpace;
+
+				// model
+
+				function onProgress( xhr ) {
+
+					if ( xhr.lengthComputable ) {
+
+						const percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( 'model ' + percentComplete.toFixed( 2 ) + '% downloaded' );
+
+					}
+
+				}
+
+				function onError() {}
+
+				const loader = new OBJLoader( manager );
+				loader.load( 'obj/male02/male02.obj', function ( obj ) {
+
+					object = obj;
+
+				}, onProgress, onError );
+
+				//
+
+				renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+				document.body.appendChild( renderer.domElement );
+
+				//
+				const controls = new OrbitControls( camera, renderer.domElement );
+				//controls.minDistance = 2;
+				//controls.maxDistance = 5;
+				controls.addEventListener( 'change', render );
+
+				//
+
+				window.addEventListener( 'resize', onWindowResize );
+
+			}
+
+			function onWindowResize() {
+
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+
+			}
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+
+	</body>
+</html>

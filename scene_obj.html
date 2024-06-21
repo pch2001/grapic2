@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>2024 컴퓨터 그래픽스 - OBJ Loader</title>
+		<meta charset="utf-8">
+	</head>
+	<body>
+		<script type="x-shader/x-vertex" id="phongVS">
+            varying vec3 fNormal, fViewPos;
+
+            void main(){
+                gl_Position =projectionMatrix * modelViewMatrix * vec4(position,1.0);
+
+                fNormal = normalize(normalMatrix * normal);
+                fViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
+            }
+        </script>
+        <script type="x-shader/x-fragment" id="phongFS">
+            precision mediump float;
+
+            uniform vec3 lightDir;
+            uniform vec4 lightAmbient, lightDiffuse, lightSpecular;
+            uniform vec4 matAmbient, matDiffuse, matSpecular;
+            uniform float matShininess;
+
+            varying vec3 fNormal, fViewPos;
+
+            void main(){
+                vec4 ambient = lightAmbient * matAmbient;
+
+                vec3 N = normalize(fNormal);
+                vec3 L = normalize(lightDir);
+                float kd = max(dot(L, N), 0.0);
+                vec4 diffuse = kd * lightDiffuse * matDiffuse;
+
+                vec3 V = normalize(fViewPos);
+                vec3 H = normalize(L-V);
+                float ks = pow(max(dot(N, H), 0.0), matShininess);
+                vec4 specular = ks * lightSpecular * matSpecular;
+
+                gl_FragColor = ambient + diffuse + specular;
+                gl_FragColor.a = 1.0;
+            }
+        </script>
+		<script type="importmap">
+			{
+				"imports":{
+                    "three": "https://unpkg.com/three/build/three.module.js",
+                    "three/addons/": "https://unpkg.com/three/examples/jsm/"
+                }
+			}
+		</script>
+		<script type="module">
+			import * as THREE from 'three';
+			import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+			import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+			let camera, scene, renderer;
+			let objects = [];
+
+            const object_files = [ 'obj/male02/male02.obj', 'obj/tree.obj', 'obj/cerberus/Cerberus.obj'];
+            const object_color = [ [1,1,1,1], [0,1,0,1], [1,0,0,1]];
+            const object_pos = [new THREE.Vector3(0, -0.95, 0), new THREE.Vector3(-1, 0, 0), new THREE.Vector3(1, 0, 0 )];
+            const object_scale = [0.01, 1, 1];
+
+			init();
+
+			function init() {
+                scene = new THREE.Scene();
+
+                // 3d perspective viewing
+				camera = new THREE.PerspectiveCamera( 60, window.innerWidth / window.innerHeight, 0.001, 1000 );
+				camera.position.z = 2.5;
+                scene.add(camera);
+
+                renderer = new THREE.WebGLRenderer({antialias: true});
+                renderer.setPixelRatio(window.devicePixelRatio);
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(renderer.domElement);
+
+                const controls = new OrbitControls( camera, renderer.domElement );
+				controls.addEventListener('change', render );
+
+                window.addEventListener('resize', onWindowResize);
+
+				const material = new THREE.ShaderMaterial({
+                        uniforms :{
+                            lightDir: {value : [0, 0, 1]},
+                            lightAmbient: {value: [0.0, 0.0, 0.0, 1.0]},
+                            lightDiffuse: {value: [1.0, 1.0, 1.0, 1.0]},
+                            lightSpecular: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matAmbient : {value: [1.0, 1.0, 1.0, 1.0]},
+                            matDiffuse: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matSpecular: {value: [1.0, 1.0, 1.0, 1.0]},
+                            matShininess: {value: 100},
+                        },
+                        vertexShader: document.getElementById("phongVS").textContent,
+                        fragmentShader: document.getElementById("phongFS").textContent
+                });
+
+				// manager
+
+				function loadModel() {
+
+					for(var i = 0; i<objects.length; i++){
+                        const group = new THREE.Group();
+
+					    objects[i].traverse( function ( child ) {
+                            if(child.isMesh){
+                                const geometry = new THREE.BufferGeometry();
+                                geometry.setAttribute('position', new THREE.Float32BufferAttribute(child.geometry.getAttribute('position').array,3));
+                                geometry.setAttribute('normal', new THREE.Float32BufferAttribute(child.geometry.getAttribute('normal').array,3));
+                                const mesh = new THREE.Mesh(geometry, material.clone());
+                                mesh.material.uniforms.matDiffuse.value = object_color[i];
+
+                                group.add(mesh);
+                            }
+                        } );
+                
+				    group.position.copy(object_pos[i]);
+					group.scale.setScalar( object_scale[i] );
+					scene.add( group );
+                    }
+					render();
+				}
+
+				const manager = new THREE.LoadingManager( loadModel );
+
+				// model
+
+				function onProgress( xhr ) {
+					if ( xhr.lengthComputable ) {
+						const percentComplete = xhr.loaded / xhr.total * 100;
+						console.log( 'model ' + percentComplete.toFixed( 2 ) + '% downloaded' );
+
+					}
+				}
+
+				function onError() {}
+
+				const loader = new OBJLoader( manager );
+                
+                for(var i = 0; i<object_files.length; i++){
+                    loader.load(object_files[i], function (obj){
+                        objects.push(obj);
+                    }, onProgress, onError);
+                }
+			}
+
+			function onWindowResize() {
+				camera.aspect = window.innerWidth / window.innerHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize( window.innerWidth, window.innerHeight );
+			}
+
+			function render() {
+
+				renderer.render( scene, camera );
+
+			}
+
+		</script>
+
+	</body>
+</html>
